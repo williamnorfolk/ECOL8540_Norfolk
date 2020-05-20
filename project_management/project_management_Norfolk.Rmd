@@ -4,9 +4,13 @@ title: Project Management^[Contributions to lectures and practicals by Andrew W.
 author: ''
 date: ''
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
+
+## Github Source Repository
+
+#### This Rmd file and the subsequent files referenced throughout the text/exercises can all be found in [this Github Repository](https://github.com/williamnorfolk/ECOL8540_Norfolk).
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
@@ -75,12 +79,11 @@ Now you have two files in your local directory that you don't have on the Github
 
 **Exercise. To *commit* a change, navigate to the "Git" tab in the top right explorer window. You will see a list of files in your work directory. Select the files that need to be pushed to Github and click on "Commit". A dialog box will open. In the top right there is an editing window where you can register a comment describing the nature of the commit.**
 
-_Changes committed pushed using GitKraken workflow._
+_Changes committed pushed using GitKraken workflow. Please see the Github Repository at_ [this link](https://github.com/williamnorfolk/ECOL8540_Norfolk).
 
 **Exercise. Once you have committed one or more changes (and documented with comments), you need to *push* the changes to the archived version. To do this, click on "Push". You will need to enter your Github credentials in the dialog box that pops up. Now refresh the website for your project. The latest versions of your files should appear.**
 
-_Changes committed pushed using GitKraken workflow._
-
+_Changes committed pushed using GitKraken workflow. Please see the Github Repository at_ [this link](https://github.com/williamnorfolk/ECOL8540_Norfolk).
 
 Github is very useful for collaboration. Multiple users can contribute code to the same project. Projects can be "branched" and "merged" and Github provides tools to identify and resolve conflicts when multiple programmers are working on the same project. Although it's fine to use the Github repository as the definitive version and create a new local copy (a new project) every time, you don't have to. Instead, you can leave your local working directory as it is and simply *pull* your collaborators contributions every time you start a new session.
 
@@ -93,6 +96,8 @@ There are a handful of ways that one can do statistically literate programming w
 In general, a project developed with R/Markdown will consist of a markdown document (with extension `.Rmd`) and the compiled report. You should learn a little more about the functions of R/Markdown and knitr, but first we will engage in a little learning-by-doing.
 
 **Exercise. Create a basic R Markdown document. Go to File -> New File -> R Markdown. Enter a title and author into the dialog box. Select the desired default output format. Save the resulting, automatically generated file. To compile the document, click on "Knit" in the R Studio editor. Study the code and the resulting report.**
+
+_Please see the Computational Workshop Reproducible Analysis file in the project_management subfolder of the Github Repository at_ [this link](https://github.com/williamnorfolk/ECOL8540_Norfolk)_.
 
 You now know enough R programming that you should be able to discern what is commentary and what is code in the `.Rmd` document. First, notice that the `.Rmd` document begins with a header and how it is set off from the rest of the document with three hyphens at the start and end of the header. These are editable properties. Indeed, there are many more options that we could encode in the header, but do not need to bother with now.
 

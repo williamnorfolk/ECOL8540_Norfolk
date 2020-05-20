@@ -44,7 +44,7 @@ West Nile virus (WNV) is a positive-sense single-stranded RNA virus transmitted 
 library(tidyverse)
 
 #load data
-wnv_data <- read.csv("./wnv.csv")
+wnv_data <- read.csv("../raw_data/wnv.csv")
 
 #plot total cases per year for each state
 ggplot(wnv_data, aes(Total)) + geom_histogram(binwidth = 50) +

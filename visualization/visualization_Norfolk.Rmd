@@ -4,8 +4,8 @@ title: Data visualization^[Contributions to lectures and practicals by Andrew W.
 author: ''
 date: ''
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -19,7 +19,10 @@ knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
 
 2. Understand there are different ways of conveying a result
 
-
+```{r}
+library(plotly)
+library(tidyverse)
+```
 
 
 ## Introduction
@@ -45,7 +48,7 @@ To load the MERS data into an R session, do the following:
 5. Create an R *dataframe* by typing `data <- read.csv('cases.csv')` as shown below.
 
 ```{r load-data}
-mers <- read.csv('./cases.csv')
+mers <- read.csv('../raw_data/cases.csv')
 ```
 ## Formatting some dates
 
