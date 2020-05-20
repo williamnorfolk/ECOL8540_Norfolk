@@ -1,0 +1,390 @@
+---
+title: Data modeling in R^[Contributions to lectures and practicals by Andrew W. Park,
+  John M. Drake and Ana I. Bento]
+author: ''
+output:
+  pdf_document: default
+  html_document: default
+---
+## Learning outcomes
+
+1. Create models from data
+
+2. Store modeling information with data
+
+3. Group and nest data for analysis
+
+## Introduction
+
+This is the fourth in a series of five exercises that constitute _Training Module 1: Introduction to Scientific Programming_, taught through the IDEAS PhD program at the University of Georgia Odum School of Ecology in conjunction with the Center for the Ecology of Infectious Diseases. 
+
+This exercise explores methods for using modeling to shape our inquiry of data. It reaches back to previous modules that taught us about data manipulation, data visualization and functions.
+
+*The term "modeling" covers a vast array of ideas and techniques. A single module is always going to be rather modest in scope. Here we are going to focus more on statistical modeling than on mechanistic modeling (e.g. linear model fitting, not SIR modeling). However, even here we have to limit the scope. We're not really going to learn how to do statistical modeling (except very briefly). Rather, we're going to learn good practices for having our tidy data integrate with statistical modeling to help us perform exploratory analysis (hypothesis generation, not hypothesis confirmation).*
+
+
+```{r, message=F, warning=FALSE}
+library(tidyverse)
+library(magrittr)
+library(GGally)
+```
+
+## Case study
+
+We're going to work with the Lyme disease/Climate/Demography data set that you previously assembled. 
+
+
+## Importing data
+
+*Task 1: Using either `read_csv` (note: the underscore version, not `read.csv`) or `load`, import the data set you put together in the module on 'Data wrangling in R'.*
+
+```{r, echo=FALSE,warning=FALSE}
+#load Rda file
+lyme <- read_csv("../wrangling/lyme_clean.csv")
+```
+
+## Using visualization to acquaint ourselves with our data
+
+There's not a one-size-fits-all approach for how best to visually inspect and summarize your data. It depends what kind of data we're looking at - and you already learned some good ideas in the visualization module. For quantitative data, such as climate, demographic and disease case data, we might be interested in knowing the range of data, which kinds of values are rare and common, and whether data are correlated with each other. 
+
+One way to do this is all in one go is with the function `ggpairs`, part of the `GGally` package, which has a language that is based on ggplot. For a data frame `df` where you're interested in numeric data columns `x`, `y`, and `z`, we load the GGally library and issue the command `ggpairs(df,columns=c("x","y","z"))`. This will make a 3x3 plot (because we have 3 columns: x, y and z). The main diagonals will display the density of the data (like a histogram, but continuous rather than binned). The lower triangle plots will show the correlation between each pair of data, and the upper triangle will report the correlation coefficient. The correlation coefficient is a number between -1 and +1, where numbers close to +1 (-1) indicate a strong positive (negative) correlation and numbers close to 0 indicate weak or no association. Note that `ggpairs` doesn't always display this way - it depends what kind of data you're visualizing.
+
+*Task 2: Use the `ggpairs` function to obtain a 4x4 summary plot of precipitation (prcp), average temperature (avtemp), population size (size), number of Lyme disease cases (cases). Note: it may take several seconds for this plot to appear as there are nearly 50,000 data points.*
+
+
+```{r, echo=T, eval=T, warning=FALSE}
+#Compare with ggpairs. Must call the dataframe, and columns to compare
+ggpairs(lyme, columns = c("prcp","avtemp","size","cases"))
+```
+
+You'll note from the density plots on the diagonals, that the data columns 'size' and 'cases' are very clumped, with many low values and a few large values. These may be easier to visualize by transforming to a logarithmic scale. 
+
+*Task 3: Create two new columns for log10(size) and log10(cases+1) and substitute these for the original size and cases supplied when you recreate the ggpairs plot. Why do we add 1 to the number of cases?*
+
+```{r, echo=FALSE, warning=FALSE}
+#log cases and size
+lyme <- lyme %>% 
+  mutate(log_cases = log10(cases + 1)) %>%
+  mutate(log_size = log10(size))
+
+#Why do we add 1 to cases?
+#This addition keeps the zero case values from becoming -Inf in when the log is taken. This will ease our coding down the line.
+
+ggpairs(lyme, columns = c("prcp","avtemp","log_size","log_cases"))
+
+
+```
+
+
+## A simple linear model
+
+Our `ggpairs` plot suggests that precipitation and average temperature are positively correlated with each other (perhaps not too surprising). Let's look at that for a random subset of the data (it's a bit easier to see that pattern when the data are thinned out).
+
+*Task 4: Using `set.seed(222)` for reproducibility, create a new data frame to be a random sample (n=100 rows) of the full data frame and plot precipitation (x-axis) vs average temperature (y-axis).*
+
+Hints:
+
+* You can make use of the dplyr function `sample_n`.
+
+* Name your ggplot (`myPlot <- ggplot...`) then call it (plot it) on a separate line (this will make it easy to add a subsequent layer to the plot)
+
+```{r, echo=FALSE, warning=FALSE}
+#make reproducible
+set.seed(456)
+#pull 100 random observations
+temp_prec_plot <- lyme %>% sample_n(100)
+#plot
+my_Plot <- ggplot(temp_prec_plot, aes(prcp, avtemp)) + geom_point() +
+  theme_classic() + xlab("Percipitation") + ylab("Average Temp")
+
+my_Plot
+```
+
+
+*Task 5: Add the best straight line to the plot using `geom_smooth`.*
+
+Hint: You'll need to use the appropriate `method` which you can find in the help file (`?geom_smooth`)
+
+```{r, echo=FALSE, eval=T,warning=FALSE}
+#add lm geom_smooth
+my_Plot + geom_smooth(se = FALSE, method = "lm")
+```
+
+Further, we can store the linear model in memory and get a summary.
+
+*Task 6: Create a linear model (lm) object with a call like `myModel <- lm(y ~ x, data = myData)` for the subsetted data, where y=avtemp and x=prcp. In addition, view the summary with a call along the lines of `summary(myModel)`*
+
+```{r, echo=FALSE,warning=FALSE}
+#summary stats
+my_model <- lm(avtemp ~ prcp, data = temp_prec_plot)
+summary(my_model)
+```
+
+We can extract information from this model object. For example, if your model object was actually called `myModel` (maybe not the best name; what happens if you have another model?) we can access the slope with `summary(myModel)$coefficients[2,1]` and the associated p-value with `summary(myModel)$coefficients[2,4]`
+
+*Task 7: What is the slope of the line you plotted in Task 5, and is the slope significantly different from 0 (p<0.05)?*
+
+```{r, echo=FALSE, eval=T,warning=FALSE}
+#slope
+summary(my_model)$coefficients[2,1]
+#p-value
+summary(my_model)$coefficients[2,4]
+
+#The slope from my plot is 0.003111562 with a p-value of 0.007175991 which suggests that the slope is significantly different. 
+```
+
+
+## The `modelr` package
+
+The `modelr` package is essentially a set of functions for modeling that are designed to help you seamlessly integrate modeling into a pipeline of data manipulation and visualization.
+
+We'll start with an illustrative exercise. We know the size of the US population has been growing.
+
+*Task 8: Write a single line of code to generate a ggplot of total population size by year.*
+
+Hint: you should pass the main (large) data frame to a `group_by` call and then a `summarize` call, then you can pass this new, unnamed data frame to ggplot using `ggplot(.)` and specify the aesthetics in a `geom_point` call. 
+
+```{r, echo=T, eval=T,warning=FALSE}
+#plot total pop over years
+lyme %>% group_by(year) %>%
+  summarise(tot_pop = sum(log_size)) %>%
+  ggplot(.) + geom_point(aes(year, tot_pop)) +
+  theme_classic() +
+  xlab("Year") +
+  ylab("Total Population (log10 scale)")
+```
+
+While there is no doubt that the population has been growing in recent years, it's not clear if all states are contributing equally to this growth. Manipulating data to explore this has the potential to get quite cumbersome, but the `modelr` tools are designed to make this kind of task fairly painless. 
+
+### Grouped data frames versus nested data frames
+
+We're going to create a nested data frame, which we do by first creating a grouped data frame (which you've already done in another context). 
+
+*Task 9: Create a data frame called "by_state" from the main data frame, that groups by state, and inspect it.*
+
+```{r, echo=FALSE, eval=T,warning=FALSE}
+#The by_state dataframe is a duplicate of the main dataframe (lyme) grouped by state order (i.e. Alabama entries are all first followed by Arizona and so on in alphabetical order)
+by_state <- lyme %>% group_by(state)
+```
+
+*Task 10: Next, update this new data frame so that it is nested (simply pass it to `nest`). Again, inspect the data frame by typing its name in the console so see how things changed.*
+
+```{r, echo=T,warning=FALSE}
+#nest the dataframe
+by_state <- nest(by_state)
+```
+
+You should see that by_state has a list-column called "data". List elements are accessed with [[]]. For example to see the data for Georgia, the 10th state in the alphabetized data frame, we would type `by_state$data[[10]]` in the console.
+
+*Task 11: Display the Georgia data in the console window.*
+
+```{r, echo=FALSE, eval=T,warning=FALSE}
+#View GA
+by_state$data[[10]]
+```
+
+Hopefully you noticed that this particular element of the data frame is itself a dataframe! The containing column, which contains several such data frames differing in length due to the number of counties per state, is most usefully organized as a list - hence the column-list format. This method of organizing data comes in very useful for exploratory modeling, as we'll see. First we're going to create another function.
+
+*Task 12: Write a function that takes a data frame as its argument and returns a linear model object that predicts size by year.*
+
+```{r, echo=T,warning=FALSE}
+#lm function
+auto_lm <- function(df){
+  # Takes a dataframe as an argument and retuns a linear model object that predicts size by year
+  #
+  # Args:
+  #   df = a dataframe to return a lm information
+  #
+  # Returns:
+  #   a lm object that predicts size bt year
+  # Computation
+  mod <- lm(size ~ year, data = df)
+  return(mod)
+}
+#test out the function
+test <- auto_lm(by_state$data[[10]])
+test
+```
+
+
+Next, we're introduced to one of the functions of `purrr`. This is a package that is installed as part of the `tidyverse`. When we use its functions - we need to make sure we have activated the library. The function we're interested in is called "map". To illustrate its potential, we can immediately apply a state-wise statistical modeling exercise (assuming you named the function of Task 12 `linGrowth_model`):
+
+```{r, echo=T, message=F,warning=FALSE}
+#map with purrr
+models <- purrr::map(by_state$data, auto_lm)
+```
+
+### Function conflicts: why the `purrr::`?
+
+Depending on what other libraries are loaded, we sometimes have be careful that we're calling the function we think we are. For example, if we have a geographical mapping library loaded, it's quite likely that it also has a function called `map`. 
+
+If you know this to be the case (e.g. the library called `maps` has a function called `map`), you can unload it, if it's currently loaded: `detach("package:maps", unload=TRUE)`. Alternatively, you can clarify a function call by preceding it with the package name, followed by two colons. For example `maps::map` or `purrr::map`. 
+
+### Back to `purrr::map`
+
+For data science good practice, it makes sense to put the model object fitted for each state with the appropriate state in the original data frame - not in a new data frame, like we just saw, as that requires extra coordination and possible mistakes. 
+
+*Task 13: Add a column to the `by_state` dataframe, where each row (state) has its own model object.*
+
+```{r, echo=T,warning=FALSE}
+#mutate a new variable called model and add the model list from purrr::map
+by_state <- by_state %>% dplyr::mutate(model = purrr::map(data, auto_lm))
+```
+
+Continuing in this format, we can, for example, store the residuals for each model (the discrepancy between the model prediction and the actual data). For this we will use the associated function to `purrr:map`, called `map2`, which takes 2 arguments and creates new data from them (in this case residuals).
+
+
+```{r,warning=FALSE}
+library(modelr)
+#adds a new variable resids containing the model residuals 
+by_state %<>% mutate(resids = map2(data, model, add_residuals))
+```
+
+*Task 14: Run these commands and inspect "resids". What is the structure of "resids"?*
+
+**The structure of resids is a list of dataframes. The dataframes are replicates of the parent by_state dataframes with an extra residuals column added to the variables.**
+
+*Task 15: Write a function that accepts an object of the type in the resids list, and returns a sum of the absolute values, i.e. ignoring sign: abs(3)+abs(-2)=5. Use the function to add a column called `totalResid` to `by_state` that provides the total size of residuals summed over counties and years.*
+
+```{r, echo=T,warning=FALSE}
+
+#absoute value of residuals function
+abs_sum_resid <- function(ls){
+  # Takes a list of residuals as an argument and retuns the total size of residuals summed
+  #
+  # Args:
+  #   ls = a list of residuals
+  #
+  # Returns:
+  #   the sum of the absolute values of residuals
+  # Computation
+  abs_sum <- sum(abs(ls$resid)) #note* variable is resid in the nested dataframes but resids in by_state column
+  return(abs_sum)
+}
+
+#add total residual size to summed countries over years
+by_state <- by_state %>% mutate(totalResid = purrr::map(resids, abs_sum_resid))
+
+
+```
+
+
+In addition, we can obtain and visualize the slope of population growth by state. 
+
+*Task 16: Write a function that accepts a linear model and returns the slope (model `M` has slope `M$coefficients[2]`) and then use this function to create a new column called `slope` in the `by_state` data frame, that is the slope for each state.* 
+
+```{r, echo=T,warning=FALSE}
+#slope of a lm function
+slopey <- function(z){
+  # Takes a linear model and returns the slope
+  #
+  # Args:
+  #   z = a linear model
+  #
+  # Returns:
+  #   the slope of the lm
+  # Computation
+  slope <- z$coefficients[2] #note* variable is resid in the nested dataframes but resids in by_state column
+  return(slope)
+}
+#add a new column called slope to by_state
+by_state <- by_state %>% mutate(slope = purrr::map(model, slopey))
+
+```
+
+While we're doing a great job of keeping our data organized, we've created another list-column (`slope` in data frame `by_state`). For visualization, we're going to want to un-nest these data structures...
+
+
+```{r,warning=FALSE}
+#pulls the designated columns out of by_state
+slopes <- unnest(by_state, slope)
+totalResids <- unnest(by_state, totalResid)
+```
+
+
+Now we can pass these new data frames to ggplot to see how the growth rate manifested in different states.
+
+*Task 17: Plot the growth rate (slope value) for all states.*
+
+Hint: If the states (x-axis) are hard to read, we can rotate them to be vertical by adding ` + theme(axis.text.x = element_text(angle = 90, hjust = 1))` to the ggplot layers.
+
+```{r, echo=T, eval=T,warning=FALSE}
+#plot slopes
+ggplot(slopes, aes(state, slope, color = state)) + geom_point(stat = "identity", size = 2) +
+ theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none") +
+  xlab("") +
+  ylab("Slope")
+
+```
+
+*Task 18:  Plot the total resisduals for all states.*
+
+```{r, echo=FALSE, eval=T,warning=FALSE}
+
+ggplot(totalResids, aes(state, totalResid, color = state)) + geom_point(stat = "identity", size = 2) +
+ theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none") +
+  xlab("") +
+  ylab("Total Residuals")
+
+```
+
+This manipulation helps us to determine, which states are growing quickly, and which state's growth is relatively reasonably described by a linear model. 
+
+
+*Task 19: Repeat Tasks 9 and 10 using a different data frame name, `by_state2`.*
+
+```{r, echo=FALSE,warning=FALSE}
+#make a new nester frame called by_state2
+by_state2 <- lyme %>% group_by(state)
+by_state2 <- nest(by_state2)
+
+```
+
+*Task 20: Write a function that accepts an element of the `by_state2$data` list-column and returns the spearman correlation coefficient between Lyme disease cases and precipitation*
+
+Hints:
+
+* Use ?cor.test for general help with correlation tests
+
+* Append "$estimate" to the end of the cor.test call to pull out the correlation coefficient
+
+* Wrap the entire thing in "supressWarnings()" to prevent R repeatedly warning you about computing p-values with ties (which is not a big deal)
+
+```{r, echo=T, eval=T,warning=FALSE}
+#pull help tab
+?cor.test
+
+#cor test function
+cor_calc <- function(q){
+  # Takes an element of the `by_state2$data` list-column and returns the spearman correlation coefficient        #  between Lyme disease cases and precipitation
+  #
+  # Args:
+  #   q = an element of (a dataframe) the `by_state2$data` list-column
+  #
+  # Returns:
+  #   the spearman correlation coefficient between Lyme disease cases and precipitation
+  # Computation
+  # cor.test take x and y which are numeric vectors of data values (i.e. columns of interest) and a method in    #  this example = spearman
+  corr <- suppressWarnings(cor.test(q$cases, q$prcp, method = "spearman")$estimate)
+  return(corr)
+}
+```
+
+```{r}
+#try out spearman
+#as above in line 237 (not 100% sure about this method but it did not throw an error)
+by_state2 %<>% mutate(spear = purrr::map(data, cor_calc))
+
+#unest what we just created 
+spears <- unnest(by_state2,spear)
+#try a plot
+ggplot(spears, aes(state, spear, color = state)) + geom_point(stat = "identity", size = 2) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none") +
+  xlab("") +
+  ylab("Spearman Correlation Coefficient")
+  
+
+```
+
+*You've come a long way in importing and visualizing data and in keeping complex modeling information well organized to help you pick up on important features. While we only looked at a few examples, they introduce you to the style of combining data with modeling inquiries. Your own research can make use of these good practices, which will become routine allowing you to focus more on the research questions.* 
+

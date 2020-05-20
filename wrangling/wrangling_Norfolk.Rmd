@@ -1,0 +1,314 @@
+---
+title: Data wrangling in R^[Contributions to lectures and practicals by Andrew W.
+  Park, John M. Drake and Ana I. Bento]
+author: ''
+output:
+  pdf_document: default
+  html_document: default
+---
+## Learning outcomes
+
+1. Reading in data
+
+2. "Tidy" data
+
+3. Piping and applying functions to rows
+
+## Introduction
+
+This is the third in a series of five exercises that constitute _Training Module 1: Introduction to Scientific Programming_, taught through the IDEAS PhD program at the University of Georgia Odum School of Ecology in conjunction with the Center for the Ecology of Infectious Diseases. 
+
+This exercise explores methods of data wrangling, which is essentially the good practices associated with storing and manipulating data. This module uses the following libraries:
+
+```{r, echo=T, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(magrittr)
+library(dplyr)
+library(stringr)
+library(GGally)
+library(maptools)
+library(ggmap)
+library(maps)
+```
+
+## Case study
+
+Lyme disease is a tick-borne emerging infectious disease in the US dating back to the 1970s and caused by a bacteria called _Borrelia burgdorferi_. It is thought to infect hundreds of thousands of people each year, though not all cases get reported. The distribution of cases of Lyme across the US is incompletely understood to this day. We'll be working with three distinct data sets
+
+* The US census data (population size) 2000-2014 by county 'pop.csv'
+* The CDC public-use data set on Lyme disease cases 2000-2015 by county 'lyme.csv'
+* The PRISM data set, which contains commonly-used climate variables, 2000-2015, by county 'climate.csv'
+
+Our ultimate research goal is to better understand the relationship between climate, population size and Lyme disease cases. Our scientific programming goals are to
+
+* Import the data sets
+* Convert data to the `tidy data` format
+* Identify and manipulate text strings with the `regexp` language
+* Merge data sets
+* Visualize geographic variables as a map
+
+In the subsequent module, we'll continue to work with these data and develop more good techniques to support hypothesis generation.
+
+## Importing data
+
+The Lyme disease data is relatively simple to import because the CDC maintains the data as a csv file (this data is provided to you on the workshop web page, but for your records it is available here: https://www.cdc.gov/lyme/stats/). We're going to use the `read_csv` command for loading all these data sets (not `read.csv`). The `read_csv` will create tibble versions of data frames, which retain all the good things about data frames, but not some of the less good things (more here on tibbles: https://cran.r-project.org/web/packages/tibble/vignettes/tibble.html)
+
+Similarly, the Census U.S. Intercensal County Population Data, 1970-2014 (also provided to you) is available from the National Bureau of Economic Research as a csv file ( http://www.nber.org/data/census-intercensal-county-population.html)
+
+The PRISM data for total rainfall and average temperature, is available for overlapping years, 2000-2015 (http://www.prism.oregonstate.edu/). Please note: your instructors have obtained and formatted this data from PRISM in advance, as it involves some time consuming steps that are beyond the scope of this workshop (please ask in a break if you're interested in learning about this).
+
+*Task 1: Read in all three csv files as tibble data frames. For consistency with these notes, we'll assign their dataframes to be called "ld", "pop" and "prism", resectively.*
+
+```{r, message=F, echo=FALSE,warning=FALSE}
+#Read data
+ld <- read_csv("./lyme.csv")
+pop <- read_csv("./pop.csv")
+prism <- read_csv("./climate.csv")
+```
+
+## Converting data to the `tidy data` format
+
+Currently, only the PRISM data conforms to the concept of `tidy data`:
+
+* Each variable has its own column
+* Each observation has its own row
+* Each value has its own cell
+
+This is a highly recommended format to store data, and you can read more about why here: http://www.jstatsoft.org/v59/i10/paper. Unfortunately, it is not a standard way of storing data. Fortunately, there are tools within the R programming environment that can help us convert data to the tidy format. 
+
+### A note about FIPS codes
+
+You'll note that there is a column called `fips`. This is a number that uniquely defines a county in the US. The first 1 or 2 digits refer to the state (e.g. 6=California, 13=Georgia). The following 1-3 digits identify the counties of that state, numbered in alphabetical order, usually using only odd numbers (e.g. 59 is Clarke county, where we are now). The full FIPS code for Clarke county is 13059 (we 'pad' the county code with zeros to ensure it is three digits in total - but we don't do that with states, which can be 1 or 2 digits). The format may seem a little quirky, but the system works very well in uniquely identifying counties in the US and is one of the common ways that infectious disease, climate and demographic data are organized in this country. 
+
+### Worked example: Census data `pop`
+
+*Task 2: By inspecting the 'pop' data, and talking with your neighbors and instructors, articulate in which way(s) these data fail to conform to the `tidy data` format?*
+
+_By inspecting the pop data the most obvious non-tidy aspect is the presence of a series of population variables all representing a different year. To format to tidy, these variables should be aligned with their appropriate locations and converted to a longer format containing two variables comprised of population size, and date/year. Furthermore there appears to be some atypical variables (i.e. pop20104) that warrent investigation before analysis. Lastly, there is likely a large number of extra variables in this dataset that will all not be needed for analysis._
+
+```{r}
+#Use glimpse to take a quick look at the data
+glimpse(pop)
+```
+
+
+The following code chunk manipulates the `pop` data frame to the `tidy data` format, and does one or two other useful things along the way. It uses three functions from the `dplyr` package: _select_, _gather_, and _mutate_. In addition, it uses `str_replace_all`, which is a function of the `stringr` packages that replaces characters (text) with other characters. The basic call is
+
+`str_replace_all(x,y,z)`
+
+where `x` is where R should look to perform these replacements, `y` is the pattern to be replaced, and `z` is the replacing pattern. The syntax to identify/find character strings is known as `regexp` language (short for _regular expression_). It's beyond the scope of this workshop to learn the language in full, but you'll note that the code chunk below can remove text by replacing a string with "". It also finds characters that begin with "0" by using "^0" (here the ^ means 'start of character string'). 
+
+*Task 3: Before running the code, read it to see if you can work out or guess what each line is doing. Before running a line of code, remind yourself of the current format of `pop` by typing it's name in the console window and hitting return. Then run each line, one by one, and after each line has been executed, look again at `pop` to see what it did. Once you're clear about what each line is doing, add a comment line above each code line to remind you, in your own words, what the code does.*
+
+```{r,warning=FALSE}
+#This step removes all variables from the dataset except fips and any variable begnning with the syntax "pop2" thus representing the various population variables.
+pop %<>% select(fips,starts_with("pop2")) 
+#This step reformats the various pop variables ot long format where the "key" or identifier indicates the year and the "value" is the population size for that year. Additionally this step removes any NA values.
+pop %<>% gather(starts_with("pop2"),key="str_year",value="size") %>% na.omit
+#This step mutates the data to add a new variable called year using the information in the str_year variable. The function str_replace_all uses the pulls informaiton from the str_year variable by finding the syntax "pop" then replacing it with a blank ("") to result in the year minus the "pop" prefix.
+pop %<>% mutate(year=str_replace_all(str_year,"pop",""))
+#This step mchanges the new year variable from character to integer.
+pop %<>% mutate(year=as.integer(year))
+#step modifies the existing fips variable by removing the first zero from the number which allows us to complete the final step below
+pop %<>% mutate(fips=str_replace_all(fips,"^0",""))
+#Lastly this step converts the fips variable into integer class from character class
+pop %<>% mutate(fips=as.integer(fips))
+```
+
+The code is now in `tidy data` format. Arguably we could remove state-wide population summaries too, but we can do that when we combine data sets (*How would you do remove state-wide summaries at this stage?*).
+
+```{r}
+#To remove statewide population summaries you would remove any fips codes ending in 000 (these have substantially larger population sizes compares to other samples). We will leave these in since the will be removed by the inner_join below.
+
+#We will remove entries provided to year == 20140 since this is a nonsensical value.
+pop <- pop[!(pop$year == 20104), ]
+```
+
+Also we could remove the character column 'str_year' now that we've converted year to integer (*How would you do this?*), but it may be useful to retain it.
+
+```{r}
+#to remove the str_year column you can use the code below (I will keep this coded commented out if needed below
+#pop <- pop %>% select(-str_year)
+```
+
+### Lyme disease data
+
+The CDC Lyme disease data is also not currently in `tidy data` format. 
+
+*Task 4: Write a code chunk to convert the Lyme disease data to `tidy data` format. *
+
+```{r}
+#Filter out extra columns
+ld <- ld %>% select(STNAME, CTYNAME, STCODE, CTYCODE, starts_with("Cases")) 
+#reformat case data to long
+ld <- ld %>% gather(starts_with("Cases"),key="case_year",value="cases") %>% na.omit
+#modify case and year variables to clean format
+ld <- ld %>% mutate(year = str_replace_all(case_year,"Cases","")) %>%
+   mutate(year = as.integer(year)) %>%
+   select(-case_year)
+#pad with zeros using stringr such that all county codes are three digits
+ld <- ld %>% mutate(CTYCODE = str_pad(CTYCODE, 3, pad = "0"))
+#paste join to full fips
+ld <- ld %>% mutate(fips = paste(STCODE, CTYCODE, sep = ""))
+```
+
+Hints: 
+
+* You are going to want a column that has the full FIPS codes for each county, as explained above. You should write a function that takes two arguments: state code and county code. The function should return a 4 or 5 digit FIPS code (integer data type). For county codes that are 1 or 2 digits, you'll need to 'pad' them with the appropriate number of zeros (this will require an if-else flow control). You can determine how long a character string is using the str_length function of the `stringr` package (e.g. str_length("disease")=`r str_length("disease")`). As you might expect, the command to paste two character strings together is `paste` (remember, you can get help with ?paste). To apply your function to every cell you can use the `rowwise` function which is part of the `dplyr` package (as used in the presentation example).
+
+* Use 'rename' to rename the columns "STNAME" and "CTYNAME" with "state" and "county", respectively (useful for a later join-operation for mapping)
+
+```{r, echo=T,warning=FALSE}
+#rename cols
+ld <- ld %>% rename(state = STCODE,
+                      county = CTYCODE)
+```
+
+## Combining data sets
+
+Base R has a `merge` function that works well in combining data frames, and we encourage you to familiarize yourself with it (?merge). The `dplyr` package has a set of `join` functions that operate on tibbles. This is the method we are using in this workshop. 
+
+*Task 5: Join the Lyme disease data frame and PRISM data frame together to form a new data frame, and in such a way that it retains county-year combinations for which we have both disease and clime data.*
+
+Hint: revisit the presentation on joins and perhaps even the link to superheroes, if you need more information (and ask instructors)
+
+```{r, echo=T, message=F,warning=FALSE}
+#convert fips to numeric to match the prisim dataset
+ld$fips <- as.numeric(as.character(ld$fips))
+#use an inner join to retain data with values in both disease and climate
+ld_and_prism <- inner_join(ld, prism)
+```
+
+*Task 6: Write a line of code to additionally combine the demographic data with the Lyme disease and climate data.*
+
+```{r, echo=FALSE, message=F}
+#Use inner join once again
+all_join <- inner_join(ld_and_prism, pop)
+```
+
+## Obtaining summary information
+
+We may want to obtain an overview of a large data frame. For this purpose, we'll use the `summarize` function of the `dplyr` package (note: base R can perform similar duties with the `aggregate` function).
+
+The accompanying presentation demonstrates `summarize` by obtaining the average test scores for students according to their major. Building on this example:
+
+*Task 7: Write two lines of code that create two new data frames: (1) to determine how many cases of Lyme disease were reported each year, (2) the average number of cases in each state - averaged across county and year. What was the worst year? Which three states have been most impacted on average?*
+
+Hints: 
+
+* we previously applied a `rowwise` operation to the Lyme disease data set `ld` - it is wise to `ungroup` it early in the pipe (e.g. start `my_dataframe <- ld %>% ungroup %>% ...`) 
+* when you use `summarize` you can define the new column name (recall 'grades' example of 'avScore') - otherwise R will give it a default name
+* you can include the `arrange` function at the end of your pipe to put the data in a meaningful order (e.g. `...  %>% arrange(avScore)` or `...%>% arrange(desc(avScore))`)
+
+```{r, echo=T,warning=FALSE}
+#determine the annual total Lyme cases for each year
+annual_lyme <- all_join %>%
+  group_by(year) %>%
+  summarise(annual_cases = sum(cases))
+```
+
+*Now do number (2)*
+```{r, echo=FALSE,warning=FALSE}
+#To determine the average by state
+avg_lyme <- all_join %>%
+  group_by(state) %>%
+  summarise(avg_cases = mean(cases)) %>%
+  arrange(desc(avg_cases))
+
+#Worst states?
+#States 25, 9, and 10 have the highest average cases over all years which are the states: MASSACHUSETTS, CONNECTICUT, and DELAWARE repectively. This is consistent with the known range of the Lyme vector species.
+
+#to determine the average by state for each year respectively
+avg_lyme_2 <- all_join %>%
+  group_by(state, year) %>%
+  summarise(avg_cases = mean(cases))
+avg_lyme_2 <- aggregate(avg_cases ~ state + year, avg_lyme_2, FUN = sum) %>%
+  arrange(desc(avg_cases))
+
+#to determine the worst year total
+avg_lyme_3 <- all_join %>%
+  group_by(year) %>%
+  summarise(avg_cases = mean(cases)) %>%
+  arrange(desc(avg_cases))
+
+#Worst years?
+#Based on the total average cases, the worst year was 2009. Individual state level case averages vary depending on location, however may of the highest case averages are from 2009 or nearby years. The highest average case rate was from Connecitcut in 2002 with an average of 562 cases within the year. 
+```
+
+
+## Saving data frames as objects and files
+
+We've come a long way since we read in the raw data on Lyme disease, demography and climate. We'll save the combined data frame you created in readiness for a subsequent module
+
+*Task 8: use `save` to create an Rda file of the data frame and use `write_csv` to create a csv file of the same (remember to try ?save and ?write_csv in the console if you're not sure how these functions work).*
+
+```{r, eval=FALSE, echo=FALSE,warning=FALSE}
+#write csv
+write_csv(all_join,"lyme_clean.csv")
+#save data in the wrangling folder
+save(all_join, file = "./lyme_clean.Rda")
+```
+
+## Using FIPS and built-in mapping tools to visualize geographic data
+
+R has ever-increasing capabilities to produce high-quality maps and sophisticated geographical data analysis. For an introductory scientific programming workshop we can't go into all those details - but we can illustrate some simple mapping ideas that can help us understand and visualize our spatial data. 
+
+ggplot has US mapping objects that we can take advantage of. 
+
+*Task 9: Add annotations to the following lines of code with comment lines to explain what they are achieving. Note: in the code line with "group_by(ld.prism.pop)" you need to replace the data frame in parentheses with the name of your data frame in which you combined Lyme disease, climate and demography data (Task 6)*
+
+```{r}
+#fix colnames 
+all_join <- all_join %>%
+  select(- state, -county) %>%
+  rename(state = STNAME, county = CTYNAME)
+```
+
+
+```{r, eval=T, message=F,warning=FALSE}
+#This chunk is having issues running on the R server, but it runs just fine on a local Rstudio
+
+
+#get map data for US counties and states
+#Data from ggplot to assign specific regions, merge data by fips, and identify counties
+county_map <- map_data("county")
+state_map <- map_data("state")
+
+## prepare data for plot. first group biological data by fips
+#Groups plotting data by respective fips codes (i.e. states and counties)
+ag.fips <- group_by(all_join,fips) 
+
+## add all the cases that occur in a county over time
+#Computes the sum of cases in the dataset for the fips codes that were used to orgnize the data above
+ld.16y<-summarize(ag.fips, all.cases=sum(cases))
+
+## add in the state and county names to each fips to match to geographical data
+#Brings in state and country names needed to prodice the plot. Left join returns all the rows present in the left dataframe regardless of presence in the right (so we do not lose values)
+ld.16y<-left_join(select(all_join,c(state,county,fips)),ld.16y)
+#this step removes any repeats
+ld.16y<-distinct(ld.16y)
+
+# rename state and county headers, and manipulate entries to match to geographical data
+#This step cleans all names and entries to match the loded country and state map data
+ld.16y %<>% rename(region=state,subregion=County)
+ld.16y$subregion<-str_replace_all(ld.16y$subregion," County","")
+ld.16y$region<-tolower(ld.16y$region)
+ld.16y$subregion<-tolower(ld.16y$subregion)
+ld.16y$subregion<-str_replace_all(ld.16y$subregion," parish","")
+
+# add column where cases are expressed as log10
+#Convert to log scale 
+ld.16y %<>% mutate(log10cases=log10(1+all.cases))
+
+# combine geographical and lyme data
+#then merge with the geograpgical data
+map.ld.16y<-left_join(county_map,ld.16y)
+
+# plot (note a handful of counties don't match - this is usually due to spelling differences such as st. james and saint james)
+#Create a plot using geom_polygon that uses lat and long (from the geographic data) to constuct a plot of the country. County fills are determine by case prevlance within the locality using scale_fill_gradient
+ggplot(map.ld.16y)+geom_polygon(aes(long,lat,group=group,fill=log10cases),color="gray",lwd=0.2) + 
+  scale_fill_gradientn(colours=rev(heat.colors(10)))
+```
+
+
+
