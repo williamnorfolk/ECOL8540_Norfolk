@@ -1,0 +1,137 @@
+---
+title: "Computational Workshop Reproducible Analysis"
+author: "William Norfolk"
+date: "5/20/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+## West Nile Virus Analysis 
+
+**Exercise. Borrowing from your earlier exercises, prepare an analysis of the WNV or MERS data as a reproducible document using R/Markdown. Compile to a pdf (if your desktop in class is not compiling in PDF compile in HTML.**
+
+```{r}
+#load libs
+library(tidyverse)
+library(lubridate)
+library(plotly)
+```
+
+```{r}
+#load data from relative path
+wnv_data <- read.csv("../raw_data/wnv.csv")
+#take a look at data
+glimpse(wnv_data)
+
+```
+
+```{r}
+#add case fatality rate
+wnv_data <- wnv_data %>% dplyr::mutate(cfr = Fatal / Total)
+```
+
+```{r}
+wnv_data$Year <- as.character(as.integer(wnv_data$Year))
+```
+
+
+```{r}
+#lets take a look at average case fatality rate for each year (all states)
+plot1 <- ggplot(wnv_data, aes(x = Year, y = cfr, fill = Year)) + stat_summary(fun = "mean", geom = "bar") +
+  theme(legend.position = "none", axis.text = element_text(size = 10),
+  panel.border = element_blank(), 
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.line = element_line(colour = "black"),
+  panel.background = element_blank()) +
+  xlab("") +
+  ylab("Mean Case fatality Rate")
+
+plot1 
+```
+
+```{r}
+#bring in the mean and std err function
+mean_and_stderror <- function(x){
+  # Function calculates the mean and standard error
+  #
+  # Args:
+  #   x = a vector of values for which the mean and standard error will be calculated
+  #
+  # Returns:
+  #   the mean and standard error
+  #
+  # calculates the mean 
+  m <- mean(x)
+  # calculates the standard deviation
+  std_deviation <- sd(x)
+  # calculates the square root of the sample size (for determining statndard error)
+  sqrt_sample_size <- sqrt(length(x))
+  
+  # calculates the standard error
+  # Computation
+  se <- std_deviation/sqrt_sample_size
+  return(c(m,se))
+}
+
+#Start by computing the neuroinvasive disease rate from raw values
+wnv_data <- wnv_data %>% dplyr::mutate(neuro_rate = EncephMen / Total)
+```
+
+
+```{r}
+#reproduce the statewise mean cfr
+state_rate_dat <- wnv_data %>%
+  group_by(State) %>%
+  summarise(mean = mean_and_stderror(neuro_rate)[1],
+            stderr = mean_and_stderror(neuro_rate)[2])
+#plot summary data
+ggplot(state_rate_dat, aes(State, mean, fill = State)) + geom_bar(stat = "identity") + 
+  geom_errorbar(aes(State, ymin = mean - stderr, ymax = mean + stderr)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8), 
+  legend.position = "none", 
+  panel.border = element_blank(), 
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.line = element_line(colour = "black"),
+  panel.background = element_blank()) +
+  ylab("Mean Neuroinvasive Disease Rate") + 
+  xlab("")
+```
+
+
+```{r}
+#lastly lets make a scatter plot to base our plotly figure from we will compare the number of neuroinvasive cases to the fatal cases to see if they correlate. We would expect them to correlate strongly due to the severity of EncephMen cases and increased disease incidence where neuroinvasive disease is high.
+
+#make the plot and apply some asthetics
+plotly_plot <- ggplot(wnv_data, aes(EncephMen, Fatal, color = Year)) + geom_point() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8), 
+  legend.position = "right", 
+  panel.border = element_blank(), 
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.line = element_line(colour = "black"),
+  panel.background = element_blank()) +
+  ylab("Neuroinvasive Cases") + 
+  xlab("Fatal Cases")
+
+plotly_plot
+```
+
+
+```{r}
+#we can confirm our correlation with a spearman correlation test
+#we see that our data is indeed very correlated
+cor.test(wnv_data$EncephMen, wnv_data$Fatal, method = "spearman")
+```
+
+**Exercise. Add an interactive plotly graph to your reproducible document. Compile to HTML.**
+
+```{r}
+#use the plot above to make a plotly plot
+ggplotly(plotly_plot)
+```
+
+
+

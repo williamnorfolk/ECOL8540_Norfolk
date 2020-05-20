@@ -61,13 +61,26 @@ You should now have a "project" open. In the file explorer you should see the fi
 
 **Exercise. Copy the MERS data file `cases.csv` and paste it into your working directory.**
 
+```{r}
+#to retain folder organization the path below is relative to the mers dataset in raw_data
+mers_data <- read.csv("../raw_data/cases.csv")
+```
+
+
 **Exercise. Create a new script following the prototype we introduced. Your script should load the MERS data and make a plot.**
+
+_see file proj_manage.R in the project management subfolder in the working directory._
 
 Now you have two files in your local directory that you don't have on the Github repository. To synchronize your local copy and the respository, you need to *Commit* the changes and then *Push* the changes to Github.
 
 **Exercise. To *commit* a change, navigate to the "Git" tab in the top right explorer window. You will see a list of files in your work directory. Select the files that need to be pushed to Github and click on "Commit". A dialog box will open. In the top right there is an editing window where you can register a comment describing the nature of the commit.**
 
+_Changes committed pushed using GitKraken workflow._
+
 **Exercise. Once you have committed one or more changes (and documented with comments), you need to *push* the changes to the archived version. To do this, click on "Push". You will need to enter your Github credentials in the dialog box that pops up. Now refresh the website for your project. The latest versions of your files should appear.**
+
+_Changes committed pushed using GitKraken workflow._
+
 
 Github is very useful for collaboration. Multiple users can contribute code to the same project. Projects can be "branched" and "merged" and Github provides tools to identify and resolve conflicts when multiple programmers are working on the same project. Although it's fine to use the Github repository as the definitive version and create a new local copy (a new project) every time, you don't have to. Instead, you can leave your local working directory as it is and simply *pull* your collaborators contributions every time you start a new session.
 
@@ -93,6 +106,10 @@ In closing, we note that we have only scratched the surface of what can be done 
 
 **Exercise. Borrowing from your earlier exercises, prepare an analysis of the WNV or MERS data as a reproducible document using R/Markdown. Compile to a pdf (if your desktop in class is not compiling in PDF compile in HTML.**
 
+_Please see the file reproducible_analysis_wnv.Rmd located in the project management subfolder of the working directory._
+
 **Exercise. Add an interactive plotly graph to your reproducible document. Compile to HTML.**
+
+_Please see the file reproducible_analysis_wnv.Rmd located in the project management subfolder of the working directory._
 
 This document -- and all the others used for this workshop -- were written in R/Markdown.
