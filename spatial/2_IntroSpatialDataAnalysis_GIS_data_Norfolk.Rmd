@@ -1,0 +1,188 @@
+---
+title: "GIS Data"
+output: html_document
+---
+
+**Module 2 for William Norfolk**
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+# install.packages("ggplot2")
+# install.packages("sp")
+# install.packages("raster")
+# install.packages("rgdal")
+# install.packages("brew")
+# install.packages("systemfonts")
+# install.packages("mapview")
+# install.packages("spatstat")
+# install.packages("tmaptools")
+# install.packages("elevatr")
+# install.packages("rgbif")
+# install.packages("remotes")
+# remotes::install_github("Nowosad/spDataLarge")
+# install.packages("spData")
+# install.packages("gstat")
+# install.packages("fields")
+# install.packages("foreign")
+# install.packages("velox")
+```
+
+An increasing number of websites serve spatial data at a global, national or regional scale:
+
+US climate data
+http://www.prism.oregonstate.edu/6month/
+
+Global climate data
+https://www.worldclim.org/
+
+Global ecoregions
+http://maps.tnc.org/gis_data.html
+
+Animal species ranges
+https://www.iucnredlist.org/resources/spatial-data-download
+
+Global watersheds and river reaches
+https://www.hydrosheds.org/page/hydroatlas
+
+Global socio-economic and environmental data (including gridded population)
+https://sedac.ciesin.columbia.edu/data/sets/browse
+
+Global political/administrative boundaries
+https://gadm.org/data.html
+
+US political boundaries from the Census Bureau
+https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html
+
+R offers utilities for loading this data directly:
+
+```{r}
+# install.packages("remotes")
+# remotes::install_github("Nowosad/spDataLarge")
+# install.packages("spData")
+library(spData) #standard spatial packages
+library(spDataLarge)
+```
+
+To try it out, let's get the highest resolution county boundaries from US Census Bureau. (If you hover the cursor over downloadable .zips, you can copy the link to use the way I do in the code below.)
+
+```{r}
+download.file(url = "https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_county_500k.zip", destfile = "cb_2018_us_county_500k.zip")
+
+unzip(zipfile = "cb_2018_us_county_500k.zip") #This is a handy command for various datafiles
+```
+
+We can also get raster data, in this case the average minimum temperature (means x-y) at 10 minute resolution for each month from WorldClim.
+
+```{r}
+download.file(url = "http://biogeo.ucdavis.edu/data/worldclim/v2.1/base/wc2.1_10m_tmin.zip", destfile = "wc2.1_10m_tmin.zip")
+
+unzip(zipfile = "wc2.1_10m_tmin.zip")
+```
+
+Load the files. NOTICE that they should be in the directory of your workspace.
+
+##### Spatial Data Formats
+**Vector** = Vector images are mathematical calculations from one point to another that form lines and shapes.
+**Raster** = Raster images are arrays of pixels of various colors, which together form an image.
+
+```{r}
+library(raster)
+# census county boundaries
+counties<-shapefile("cb_2018_us_county_500k.shp") 
+
+# January raster of minimum temperature
+mintemp_10m_jan<-raster("wc2.1_10m_tmin_01.tif")
+```
+
+As we have seen, there are also packages in R that allow loading data from the web via APIs:
+
+rgbif – GBIF is a database of species occurrence records from sources all over the globe
+elevatr –  USGS Elevation Point Query Service is accessible from elevatr
+soildb – collection of functions for reading data from USDA-NCSS soil databases
+
+Let's work through loading species occurrences using rgbif using the puma (mountain lion) as an example
+
+```{r}
+#install.packages(rgbif)
+library(rgbif) #Species database
+
+head(name_lookup(query = 'Puma concolor', rank="species", return = 'data'))
+occ_search(scientificName = "Puma concolor")
+```
+
+```{r}
+#try another for fun-Threespot Damselfish
+head(name_lookup(query = 'Stegastes planifrons', rank="species", return = 'data'))
+occ_search(scientificName = "Stegastes planifrons")
+```
+
+Occurence searches default to retrieving 500 records, but notice that there are 11731 for the puma. We can set the limit higher to get them all. (If this is taking too long, you can stop it and move on. Just a demo.)
+
+```{r}
+#uncomment below to set cores-not needed for this on main computer
+#n_cores <- 2 #number of cores to use
+#cl <- makePSOCKcluster(n_cores)
+#registerDoParallel(cl)
+
+puma_occ<-occ_search(scientificName = "Puma concolor", limit=12000)
+```
+
+We can also filter by the year of the record and type of observation.
+
+```{r}
+puma_locs<-occ_search(scientificName = "Puma concolor", fields=c('year','basisOfRecord','protocol','decimalLongitude','decimalLatitude')) #fields works similar to dplyr's select function but for the rgbif package
+
+# Get table with coordinates
+plocs<-as.data.frame(puma_locs$data)
+head(plocs)
+```
+```{r}
+head(name_lookup(query = 'Aetobatus narinari', rank="species", return = 'data'))
+occ_search(scientificName = "Aetobatus narinari")
+
+```
+
+
+Choose a species of interest. Get occurences using rgbif, turn into an SPDF and browse in mapview.
+
+```{r}
+#Lets try a Spotted Eagle Rays: Aetobatus narinari
+#get rgbif data
+er_data <- occ_search(scientificName = "Aetobatus narinari", fields = c('year','basisOfRecord', 'protocol', 'decimalLongitude', 'decimalLatitude'), return = 'data', limit = 1500)
+
+eagle_ray <- er_data %>% drop_na() #NA values giving trouble
+
+eagle_ray_dat <- SpatialPointsDataFrame(eagle_ray[,3:4], #Designate spatial data: 3 = long and 4 = lat
+              eagle_ray, 
+              coords.nrs = numeric(0), 
+              proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+
+# browse occurrence locations
+library(mapview)
+mapview(eagle_ray_dat)
+```
+
+```{r}
+#one more out of interest
+ac_data <- occ_search(scientificName = "Acropora cervicornis", fields = c('year','basisOfRecord', 'protocol', 'decimalLongitude', 'decimalLatitude'), return = 'data', limit = 1500)
+
+staghorn <- ac_data %>% drop_na()
+
+stag_coral_dat <- SpatialPointsDataFrame(staghorn[,3:4], #Designate spatial data: 3 = long and 4 = lat
+              staghorn, 
+              coords.nrs = numeric(0), 
+              proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+
+# browse occurrence locations
+library(mapview)
+mapview(stag_coral_dat)
+```
+
+
+There's a good tutorial for rgbf: https://ropensci.org/tutorials/rgbif_tutorial/
+
+I hope these examples give you an idea of what's out there in terms of data. Really vast! Though will often require some amount of cleaning or filtering. And, I can't emphasize enough the importance of reading the metadata associated with all of these sources!!
