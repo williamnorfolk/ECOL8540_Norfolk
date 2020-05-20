@@ -111,10 +111,10 @@ In closing, we note that we have only scratched the surface of what can be done 
 
 **Exercise. Borrowing from your earlier exercises, prepare an analysis of the WNV or MERS data as a reproducible document using R/Markdown. Compile to a pdf (if your desktop in class is not compiling in PDF compile in HTML.**
 
-_Please see the file reproducible_analysis_wnv.Rmd located in the project management subfolder of the working directory._
+_Please see the file reproducible_analysis_wnv.Rmd located in the project management subfolder of the working directory at_ [this link](https://github.com/williamnorfolk/ECOL8540_Norfolk).
 
 **Exercise. Add an interactive plotly graph to your reproducible document. Compile to HTML.**
 
-_Please see the file reproducible_analysis_wnv.Rmd located in the project management subfolder of the working directory._
+_Please see the file reproducible_analysis_wnv.Rmd located in the project management subfolder of the working directory at_ [this link](https://github.com/williamnorfolk/ECOL8540_Norfolk).
 
 This document -- and all the others used for this workshop -- were written in R/Markdown.
