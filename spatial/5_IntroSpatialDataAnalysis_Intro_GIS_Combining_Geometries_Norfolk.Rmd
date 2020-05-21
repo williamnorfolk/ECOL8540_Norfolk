@@ -1,0 +1,283 @@
+---
+title: "Combining Geometries"
+output: html_document
+---
+
+**Module 4 for William Norfolk**
+
+Packages needed.
+
+```{r}
+library(tidyverse)
+library(raster)
+library(sp)
+library(sf)
+library(mapview)
+library(dplyr)
+library(mapedit)
+```
+
+
+```{r}
+# install.packages("ggplot2")
+# install.packages("sp")
+# install.packages("raster")
+# install.packages("rgdal")
+# install.packages("brew")
+# install.packages("systemfonts")
+# install.packages("mapview")
+# install.packages("spatstat")
+# install.packages("tmaptools")
+# install.packages("elevatr")
+# install.packages("rgbif")
+# install.packages("remotes")
+# remotes::install_github("Nowosad/spDataLarge")
+# install.packages("spData")
+# install.packages("gstat")
+# install.packages("fields")
+# install.packages("foreign")
+# install.packages("mapedit")
+# install.packages("velox")
+```
+
+Although geomtries can be combined using commands in the raster and sp packages, neither easily allows attributes to be maintained and correctly associated with features. Therefore, I recommend using another package, sf, which takes advantage of the tidyverse system to support "simple features, a standardized way to encode spatial vector data". To do this, the sf package requires that spatial data be converted to sf or sfc format. sf is really the best way to go for all vector geometry operations.
+
+_sf = Essentially like dplyr for spatial data._
+
+Let's use sf to bring in the Georgia Conservation Lands and the HUC 12 polygons that we used before.
+
+```{r}
+library(sf)
+hucs12_sf<-st_read("../IDEAS_Spatial_Ecology_Workshop/Hydrologic_Units_Subwatershed.shp")
+
+#pulling conlands with code below to avoid .proj issue
+
+#conlands_sf<-st_read("../IDEAS_Spatial_Ecology_Workshop/ConservationLands_2019.shp")
+
+```
+```{r}
+#direct pull the conlands shapefile
+conlands<-shapefile("../IDEAS_Spatial_Ecology_Workshop/ConservationLands_2019.shp")
+
+```
+
+```{r}
+#set the conlands crs
+crs(conlands)<-CRS("+proj=utm +zone=17 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs")
+```
+
+
+NOTE that we could also have converted the shapefiles we had already loaded to sf format.
+
+```{r}
+#will leave the first two commented out and pull to keep knitting issue from occurring 
+
+# convert to sf format
+# hucs12_sf<-as(hucs12, "sf")
+
+#convert conlands to sf format
+ conlands_sf<-as(conlands,"sf")
+```
+
+NOTICE that conlands_sf is in UTM 17, but hucs12_sf is in geographic coordinates.
+
+```{r}
+crs(hucs12_sf) #geogaphic = WGS84
+crs(conlands_sf) #UTM 17 = zone = 17 
+```
+
+We need to project hucs12_sf into UTM 17, both because they both need to be in the same coordinate system AND because only with projected data can we recalculate polygon areas accurately.
+
+**Need the same coordinate system to project.**
+
+```{r}
+# Project hucs12_sf to UTM 17
+#Sounding this one out: Transform hucs12_sf to now have the crs of conlands_sf
+hucs12_sf_utm<- st_transform(hucs12_sf,crs(conlands_sf)) #Directly transforming here so use st_transform
+
+# What does coordinate system description look like?
+crs(hucs12_sf_utm)
+#The coordinate system is now in UTM 17: Univeral Transverse Mercator System Zone 17 (i.e. east GA + everything moving North and South in the same longitudal plane)
+
+st_crs(conlands_sf)<-crs(hucs12_sf_utm) # Annoyingly, the default value for projections in st_read is a numeric code, which needed to be changed to have both layers match for analyses later on
+
+#Note** set_crs only works if the object already has a designated crs
+```
+
+Lets plot the two layers over one another starting with the watersheds. (If you paste the mapview commands in the console, the map will show up in a browser window.)
+
+```{r}
+# Load mapview package to interactively view layers
+library(mapview)
+
+# View conlands overlaid on hucs
+mapview(hucs12_sf_utm) + mapview(conlands_sf) 
+
+#note this will pull a pop-up instead of console output so disable pop-up blocker
+#also the map is very cool
+```
+
+NOTICE that the hucs are limited to the Chattahoochee, Flint, Etowah, Ocmulgee and Oconee watersheds, but the conservation lands are statewide.
+
+We can intersect the two layers to capture all the polygons that overlap between them. 
+
+```{r}
+#keeping commented out to prevent knit error
+
+#con_hucs12_inter<-st_intersection(conlands_sf,hucs12_sf_utm)
+```
+
+We get an error related to topology. An invalid topology is usually one with polygons that contain self-intersections. A really important TRICK for handling this: buffer the polygons with a 0 width buffer. Amost always works!
+
+```{r}
+conlands_sf<-st_buffer(conlands_sf, 0.00)
+hucs12_sf_utm<-st_buffer(hucs12_sf_utm, 0.0)
+```
+
+Let's try again.
+
+```{r}
+#retry
+con_hucs12_inter<-st_intersection(conlands_sf,hucs12_sf_utm)
+```
+
+NOTICE that we have only the polygons that result from the overlap of the 2 sets of polygons (and they have been split up by each other). And, for each new polygon we have the attributes from both layers. The cryptic warning refers to the fact that some fields of the intersected polygons may not be accurate any more. Notice that the value of the field ACRES is the same for many rows. 
+
+```{r}
+#view again with added polygons
+#Note will pull out a pop-up window again
+#removes extra GA area and just highlights the polygons with overlap (think: inner_join) but for polygons
+mapview(con_hucs12_inter, col.regions = "green")+mapview(hucs12_sf_utm) #adding some color for viewing
+```
+
+Now that we have altered the geometry, the ACRES field is likely incorrect for most of the polygons. This is because the value of a polygon before the geometries were combined is carried over to the resulting new polygons. We can easily recalculate area values.
+
+_Polygons combine geometry and so need to recalculate after st_intersection._
+
+```{r}
+#The code below is in essence a sf package syntax replicate for dplyr::mutate to multiply the the calc_areas column by a m2 conversion factor from the prior dataframe. 
+
+con_hucs12_inter$calc_acres<-as.numeric(st_area(con_hucs12_inter)*0.000247105) # since area is in the units of the layer, m2, we need to put in the conversion factor to get the value in acres
+
+#rerun the mapview code above to see changes (can also add below, but for knit simplicity will recycle here)
+```
+
+NOTICE that we ONLY have the portions of the two parent polygon layers that overlap with one another. There are, of course, many other geometric operations possible. See https://geocompr.robinlovelace.net/geometric-operations.html
+
+The dissolve function, in my experience, is often very useful. Here, we can dissolve subwatershed boundaries to get a single polygon for the whole watershed. First, let's look at the data without the geometry.
+
+```{r}
+library(tidyverse)
+library(dplyr)
+
+hucs12_sf_utm %>%
+  st_set_geometry(NULL) %>% #set Geometry to NULL to return to dataframe class
+  glimpse()
+```
+
+Now let's dissolve by HUC10 name and view the results.
+
+```{r}
+#For the code below think aggregate. Basically aggregating the data by the HUC 10 name (i.e. local watershed names) then replotting
+
+hucs10_sf <-
+  hucs12_sf_utm %>%
+  group_by(HU_10_NAME) %>% # this field got shortened writing out the .shp earlier
+  summarise()
+
+mapview(hucs10_sf)
+```
+
+NOTICE that hucs10_sf has many fewer polygons than hucs12_sf.
+
+```{r}
+dim(hucs10_sf)
+dim(hucs12_sf)
+
+#my thought would be that the polygons have reduced because all polygons that were represented in a specific HUC 10 name have now been aggregated into a single polygon of the entire basin.
+```
+
+We can also subset features based on values of a field.
+
+```{r}
+amicalola<-hucs10_sf[hucs10_sf$HU_10_NAME == "Amicalola Creek", ] #subsetting for just Amicalola Creek
+
+mapview(amicalola)
+```
+
+We can also buffer polygons, lines or points. Distance (dist) is in the units of the layer, meters.
+
+```{r}
+amicalola_buff<-st_buffer(amicalola,dist=1000) #adds a buffer layer around polygons
+
+# view using ggplot in order to make a map object
+ggplot()+geom_sf(data=amicalola_buff)+geom_sf(data=amicalola)
+
+# geom_sf a geom for simple features objects. Limits are set by object name in this case
+```
+
+Let's plot amicalola_buff using ggplot which gives us a graticule (lat-long lines) by default. 
+
+NOTICE that it shows lat-long coordinates even though the layer is in the UTM 17 coordinate system. 
+
+UNLIKE in mapview, this plot is not dynamic: we can't zoom or pan or query features. However, we can use ggplot to generate map outputs once we adjust arguments related to formatting.
+
+```{r}
+library(ggplot2)
+ggplot()+geom_sf(data=amicalola_buff)
+
+```
+
+We can also subset polygons (crop in this case) by a bounding box or area of interest. Here we'll use the minimum bounding box of the Amicalola Creek-shed.
+
+```{r}
+#subsetting spatial data = crop use function st_crop
+#subsetting the conlands data by the size fractionation of the amicalola bbox
+
+amicalola_box<-st_crop(conlands_sf,st_bbox(amicalola))
+# Note that we can also put the bounding box in as xmin,ymin,xmax, and ymax
+
+ggplot()+geom_sf(data=amicalola_box,color=NA,fill="light blue")+geom_sf(data=amicalola,color="red",fill=NA)
+
+#Now we haev the amicalola basin with conservation areas in light blue
+```
+
+Or, by selecting the features that overlap. Here, however, we get the attributes of amicalola joined to the conlands_sf polygons that intersect it (but we have NOT intersected the actual polygon geometries this time). Left join is turned off so that we keep only the features corresponsing to amicalola. 
+
+We see in the ggplot that a few large polygons in the Chattahoochee National Forest overlap with the Amicalola Creek-shed. In contrast, the previous ggplot is zoomed in to the Amicalola Creek-shed because the NF polygons were cropped to the minimum bounding box of the watershed.
+
+```{r}
+#Now we can zoom out to see the nearby conservation areas from with the amicaoloa conservation regions stem from.
+amicalola_overlap<-st_join(conlands_sf, amicalola, join = st_intersects, left=FALSE)
+
+ggplot()+geom_sf(data=amicalola_overlap,color=NA,fill="light blue")+geom_sf(data=amicalola,color="red",fill=NA)
+```
+
+Let's subset features by selecting directly. The  mapedit package allows you to shift-click on the map. (You'll need to select some subwatersheds and click "Done".)
+
+```{r}
+library(mapedit) #very cool direct shiny interface in Rstudio for subselecting spatial regions (polygons)
+
+#Will comment out reactive features to allow for proper HTML knitting
+
+#selected<-selectFeatures(hucs10_sf) #manually select features in the viewer tab
+
+#ggplot()+geom_sf(data=hucs10_sf,color=NA,fill="light blue")+geom_sf(data=selected,color="red",fill=NA)
+```
+
+Polygon layers can have overlapping polygons. Let's look at the IUCN caecilian (limbless amphibian) ranges (https://www.iucnredlist.org/resources/spatial-data-download). Because they require you fill out a form, we can't direct download in R so I've included the data.
+
+```{r}
+#can view ranges for organisms with available data. IUCN redlist species should be fairly available
+c_ranges<-st_read("../IDEAS_Spatial_Ecology_Workshop/GYMNOPHIONA.shp")
+
+mapview(c_ranges)
+```
+
+I've tried to give you a flavor of the possible manipulations of vector data, which are vast and, of course, will depend on the project. I've used mainly polygon data, the hardest to wrangle, but the same sorts of manipulations can be applied to lines and points.
+
+IMPORTANT TIP: I recommend using the sf package whenever manipulating vector geometries or bringing in large vector datasets. The sf package is the best of what's out there in R where it comes to altering geometries while keeping track of attributes!
+
+Here's a helpful vignette: https://cran.r-project.org/web/packages/sf/vignettes/sf3.html#geometrical_operations
+and
+https://r-spatial.github.io/sf/articles/sf4.html
