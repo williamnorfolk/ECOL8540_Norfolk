@@ -1,0 +1,369 @@
+---
+title: "Raster vs Vector"
+output:
+  html_document: default
+  pdf_document: default
+---
+Install packages we will need.
+
+**Module 3 for William Norfolk**
+
+```{r}
+library(tidyverse)
+library(raster)
+library(sp)
+library(mapview)
+```
+
+
+```{r}
+# install.packages("ggplot2")
+# install.packages("sp")
+# install.packages("raster")
+# install.packages("rgdal")
+# install.packages("brew")
+# install.packages("systemfonts")
+# install.packages("mapview")
+# install.packages("spatstat")
+# install.packages("tmaptools")
+# install.packages("elevatr")
+# install.packages("rgbif")
+# install.packages("remotes")
+# remotes::install_github("Nowosad/spDataLarge")
+# install.packages("spData")
+# install.packages("gstat")
+# install.packages("fields")
+# install.packages("foreign")
+# install.packages("velox")
+```
+
+As we've seen, vector data at it's simplest is a set of points with attributes, and can be stored as easily as a table as it can a shapefile or other spatial data format.
+
+```{r}
+library(raster)
+dbasin_pts<-shapefile("../IDEAS_Spatial_Ecology_Workshop/dbasin_pts.shp")
+```
+
+We made the shapefile above from a .csv that we downloaded. We can convert it back to a .csv without any loss of information.
+
+```{r}
+write.csv(dbasin_pts@data,"./dbasin_pts.csv") #Saved in local spatial folder
+```
+
+Vector lines are made up of points and connecting arcs. Lines can have values that indicate their width (number of lanes for roads, bank to bank for streams) and can have fields indicating direction -- allowing for topology and network analysis (e.g. if bridge X is destroyed, what's the shortest route from A to B).
+
+Let's load the stream network for Athens-Clarke county from the USGS National Hydrography Dataset.
+
+```{r}
+library(spData)
+library(spDataLarge)
+
+#USGS National Hydrogeography Dataset
+download.file(url = "https://www2.census.gov/geo/tiger/TIGER2019/LINEARWATER/tl_2019_13059_linearwater.zip", destfile = "tl_2019_13059_linearwater.zip")
+
+
+unzip(zipfile = "tl_2019_13059_linearwater.zip")#Another handy function for other types of analysis to note. Command unzips the designated folder and saves contents at the local path
+
+library(raster) # despite the name, includes the basic vector commands
+athens_streams<-shapefile("tl_2019_13059_linearwater.shp") 
+
+#Note the shapefile command can both load and save shapefiles at the designated path
+```
+
+Let's view the lines and query them using the mapview package.
+
+```{r}
+#Athens streams
+mapview(athens_streams)
+
+#Mapview requires spatial data points/lines data frame to produce visuals. Must have .prj file to designate CRS
+```
+
+NOTICE that the LINEARID is a unique id for stream reaches that is ordered to indicate direction of flow. (Explanations of attributes are given in the metadata.)
+
+NOTE that the data structure for lines is more complicated than for points. All segments have a FROM point, a TO point and a length. Lines are made up of a series of connected nodes. In vector line, spatial resolution is in part a function of number of nodes.
+_More nodes more resolution._
+
+We can buffer lines or points (or polygons) to make polygons. To do this, we need to project the data into planar coordinates to get planar distance units. We'll use UTM, but zone 16 this time, since Athens is in eastern Georgia.
+
+```{r}
+library(sp)
+#adds distance units to the coordinates to form polygons that define a designated area
+#Below we transform the data by changing the CRS designation to zone 16
+athens_streams_utm<-spTransform(athens_streams,crs("+proj=utm +zone=16 +datum=NAD83 +units=m +no_defs"))
+
+# Buffering by 10 meters (the units of the projected layer) on either side 
+# This assigns width
+library(rgeos)
+athens_stream_buff<-gBuffer(athens_streams_utm,byid=TRUE,width=10)
+
+# Because we chose to buffer by id, we end up with as many buffer polygons as stream segments
+library(mapview)
+mapview(athens_streams_utm) + mapview(athens_stream_buff, col.regions = "red") #Added color scheme to show layers
+
+#This adds width to the mapview so now if zoomed in will see more than just a delineated line. Each stream segment (area between two nodes) is now a polygon (sort of elongated oval) and stretches the lenght of the stream.
+```
+
+We can also make polygons from bounding boxes.
+
+```{r}
+#Function to create an exten object in R must feed it a raster or matrix
+e<-extent(athens_stream_buff) 
+
+#Use as() function to designate the object as class SpatialPolygons
+athens_box <- as(e, "SpatialPolygons") 
+
+#Assign the coordinate system
+proj4string(athens_box) <- "+proj=utm +zone=16 +datum=NAD83 +units=m +no_defs"
+
+#Add layer
+mapview(athens_box, col.regions = "green") + mapview(athens_streams_utm) + mapview(athens_stream_buff, col.regions = "red") #Adding the third layer back
+
+#Renders a polygon over the enture basin supplied in the athens_stream_bluff data
+```
+
+athens_box has no attributes. Simple to add them. Let's make a column called "Name" with the value "Athens bounding box".
+
+```{r}
+athens_box$Name<-"Athens bounding box"
+```
+
+NOTE that polygons are composed of a set of points (nodes) that define segments of the polygon (the more nodes, the higher the spatial resolution), which also has an area and a perimeter. ONLY when polygons are projected into planar coordinates, can we calculate area.
+
+```{r}
+#calculating area
+athens_box$km2<-gArea(athens_box)/1000000 # divide by 10^6 to convert m2 to km2
+```
+
+Coming full circle, polygons can be reduced to centroids, the point that marks the rough geographic center of the shape. The 
+
+```{r}
+library(geosphere) #need geosphere here. Installed to R server
+
+# Get UTM 16 coordinates of athens_stream_buff polygon centroids
+head(geosphere::centroid(athens_stream_buff))
+
+#Basically assign x and y locations for each polygon. Called the centroid
+```
+
+While polygons have a complex data structure, it's efficient and easy to understand. Polygons can also be overlapping as in shapefiles of species ranges, and can be nested within larger regions. AND, all vector data, whether points, lines or polygons, can be linked to endless attributes that are specific to a location.
+
+However, polygons (and vector data in general) are not great at representing continuous values. For this we generally prefer the raster format.
+
+_Better to use polygons/vector for discrete items or things that are sparse._  
+
+The utility of the raster format may be best appreciated when interpolating data from a set of locations to create a layer of values across a larger area. Here we have data on precipitation in 2019 from weather stations throughout Georgia (source: http://www.georgiaweather.net/).
+
+```{r}
+#Prepping data to visualize spatial distribution of percipitation in an area
+
+# Read in precip data
+ga_precip_2019<-read.csv("../IDEAS_Spatial_Ecology_Workshop/ga_precip_2019.csv")
+head(ga_precip_2019)
+
+# Rename column to show that it records precipitation (inches)
+colnames(ga_precip_2019)[2]<-"precip2019"
+```
+
+The table includes place names (locations of weather stations), average max temp values and coordinates. Let's get coordinates for these locations. 
+
+```{r}
+library(tmaptools) #Package for the geocode family of functions
+
+#Need to change Station.Name to character first
+ga_precip_2019$Station.Name <- as.character(as.factor(ga_precip_2019$Station.Name))
+
+#Pull coordinates using geocode_OSM. This function will accept character strings or direct character input so must recode classes to char if using a dataframe
+station_coords<- geocode_OSM(ga_precip_2019$Station.Name)# How to do this? geocode_OSM!
+head(station_coords)
+
+locations<-station_coords[,c(3,2)]
+```
+
+Now we turn these into a SPDFe as before, because we need planar coordinates in order to interpolate.
+
+```{r}
+#create a new spatial points dataframe as to designate a new crs to get planar coordinates
+precip_pts<-SpatialPointsDataFrame(locations, #needed to determine locations to add to SPDF
+              ga_precip_2019, 
+              coords.nrs = numeric(0), 
+              proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+```
+
+Let's project to UTM 17 which is the preferred projection for statewide data in Georgia.
+
+```{r}
+#project correct crs
+precip_pts_utm<-spTransform(precip_pts,crs("+proj=utm +zone=17 +datum=NAD83 +units=m +no_defs"))
+
+# write out as shapefile
+shapefile(precip_pts_utm,"ga_precip_pts_utm_2019.shp", overwrite = TRUE) #adding overwrite to fix knitting issue
+```
+
+A raster has a coordinate system, and a cell-size (resolution) that along with its extent, determines the number of columns and rows of cells. Let's use the extent (bounding box) of another existing UTM 17 layer (Conservation Lands) as a template.
+
+```{r}
+#extent = boundry limits of a defined area we used this to make the Athens box above
+# can pull the extent directly from the shapefile usinf raster::extent
+
+# Bring in the conservation lands
+conlands<-shapefile("../IDEAS_Spatial_Ecology_Workshop/ConservationLands_2019.shp")
+
+# Get conlands extent
+e<-raster::extent(conlands)
+```
+
+Now let's make an empty raster with 1 km2 cells over the extent of the Conservation Lands.
+
+```{r}
+#res = number of cells which in turn determines the "resolution" of the raster
+
+precipr<-raster(ext=e,res=1000) #the plain raster command makes a new raster set by the bounds of the extent file "e" and divided into pixels by the resolution value
+
+#need to add a .proj
+proj4string(precipr)<-"+proj=utm +zone=17 +datum=NAD83 +units=m +no_defs"
+
+precipr
+```
+
+NOTICE that this blank raster has 500 rows and 431 columns. Now let's interpolate precipitation (inches) in 2019, average annual precipitation from 1971 to 2000, and departure from that average in 2019 over this grid of cells using a thin plate spline model. 
+
+**Are the number of rows and columns determined by the shape of the extent?**
+
+```{r}
+library(fields) #additional package for curves and other spatial tools
+
+#Tps function: Fits a thin plate spline surface to irregularly spaced data
+precip <- Tps(coordinates(precip_pts_utm), precip_pts_utm$precip2019)
+
+#makes a raster layer with interpolated values using a model object
+precip2019_tps <- interpolate(precipr, precip)
+
+normal<- Tps(coordinates(precip_pts_utm), precip_pts_utm$Normal1971_2000)
+normal1971_2000_tps <- interpolate(precipr, normal)
+
+# view the results
+mapview(precip2019_tps) # Notice that we can query cells in mapview
+mapview(normal1971_2000_tps) # Notice that we can query cells in mapview
+
+#Big differene in the percip
+```
+
+This is somewhat coarse, but shows the general trend. Spatial statistical approaches are beyond the scope of this workshop. The purpose here is simply to demonstrate the raster model and its usefulness for mapping continuous values. Let's look at the layers.
+
+```{r}
+precip2019_tps
+normal1971_2000_tps
+
+#to layer rasters do all need to have the same demension, resolution, extent, and crs? I would imagine so...if data is missing from one layer can it be added/interpolates/labeled as NA?
+```
+
+Notice that this raster has a range of values for precipitation (~39-81 inches), but no other attributes. We can link labels to the precip values, but not to cell locations as in vector GIS. But, while the data model is simpler, the files (especially when high resolution) are generally much larger than vector files of the same extent, because they include values for, in this case, 215500 cells. If we had more weather stations, it might have made sense to interpolate to a raster with even finer resolution. 
+
+_Raster is limited by computing power at high resolution._ 
+
+We can create a histogram of 2019 precip values for Georgia.
+
+```{r}
+#cannot use ggplot unless data is converted to dataframe
+hist(precip2019_tps)
+```
+
+NOTE that raster data often takes up a LOT of memory and therefore is not usually stored in .RData files. So if you don't want to redo the steps, you need to write out the raster.
+
+```{r}
+# write to file as a GeoTiff
+#writeRaster(precip2019_tps,"precip_ga_2019_tps.tif") #write a Geotiff into local path
+
+# to read back in
+#precip2019_tps<-raster("precip_ga_2019_tps.tif")
+
+#will leave this code chunk commented out since the file is written now and will be created baove when knitting
+```
+
+See if you can repeat these steps for the drought (Departure) column of the precip2019 Georgia data.
+
+```{r}
+#First, lets make a new raster
+departr<-raster(ext=e,res=1000)#will keep the same extent = e 
+#need to add a .proj
+proj4string(departr)<-"+proj=utm +zone=17 +datum=NAD83 +units=m +no_defs"
+```
+
+```{r}
+#next we pul Departure from precip_pts_utm and interpolate as above
+depart <- Tps(coordinates(precip_pts_utm), precip_pts_utm$Departure)
+depart_tps <- interpolate(departr, depart)
+
+# view the results
+mapview(depart_tps) #raster layer of droughts
+```
+
+```{r}
+#view histogram
+hist(depart_tps)
+```
+
+```{r}
+#Lastly we can write the file out to the local path and pull it back in if needed
+
+#writeRaster(depart_tps,"depart_tps.tif") #write a Geotiff into local path
+
+# to read back in
+#depart_tps<-raster("depart_tps.tif")
+
+#will leave this code chunk commented out since the file is written now and will be created baove when knitting
+```
+
+
+We've just looked at a continuous raster. Not all continuous rasters derive from interpolated values. In many cases, we have sensors that provide continuous coverage of for example, night-time lights. But, landcover classifications (from remotely sensed data) are usually served as raster data. In thise case, the data is discrete or categorical with numbers standing in for particular landcover classes.
+
+_Think continious monitoring data from a weather station, need to "bin" the values to define a specific raster category as a range of these values and assign the appropriate color/demarcation/etc. for the raster to display_
+
+Let's look at the most recent (2015) land use classification of Georgia done by the Georgia Land Use Trends project (http://narsal.uga.edu/glut/) and available from the Georgia GIS Data Clearinghouse (https://data.georgiaspatial.org/).
+
+```{r}
+ga_lc<-raster("../IDEAS_Spatial_Ecology_Workshop/glut_lc_2015.img")
+
+ga_lc
+```
+
+In this case, the raster is accompanied by a .dbf that gives us the a description of the classes. 
+
+```{r}
+library(foreign) #Package used to read in and write out data in atypical formats
+# read database file
+vat<-read.dbf('../IDEAS_Spatial_Ecology_Workshop/glut_lc_2015.img.vat.dbf')
+vat
+
+unique(vat$Class) #classes for vat = various landscape types
+```
+
+We can also see the number of cells in that class and the the refectances of the Landsat data at red, green, and blue spectral ranges. This is called a value attribute table (VAT). Notice that it runs from 1-256 (8 bits), but the size of the table does not correspond to the spatial extent, resolution, or the number of classes (18). This is quite different from a vector attribute table which includes a row for each feature.
+
+**Landsat Data = Data recorded by sensors of reflected and emitted energy.**
+
+Remember that we did a spatial join to characterize the landcover surrounding the detention basins? Let's join this VAT to that shapefile so that the landcover values are more readily interpretable.
+
+```{r}
+library(raster)
+# Load detention basin points
+dbasin_pts_utm<-shapefile("../IDEAS_Spatial_Ecology_Workshop/dbasin_pts_utm.shp")
+
+# Create new field of the vat table named "lc" to join to the field of the same name in dbasin_pts_utm
+vat$lc<-vat$Value
+
+# Get only landcover value and description fields
+vat2<-as.data.frame(vat[,7:8])
+
+# Join tables
+dbasin_pts_utm<-merge(dbasin_pts_utm,vat2,all.x=T) #joining by common names 
+
+# View results
+head(dbasin_pts_utm)
+```
+
+IMPORTANT: For joins to the attributes of vector data, do NOT call the table as dbasin_pts_utm@data!!
+_My guess is this overwirites the data stored in the original file? Or it breaks the entire item?_
+
+I just given a brief introduction to raster and vector data. In the next two modules, we will explore manipulating both in more detail.

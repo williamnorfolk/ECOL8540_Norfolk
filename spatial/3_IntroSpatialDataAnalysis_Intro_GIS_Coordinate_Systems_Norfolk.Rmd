@@ -1,0 +1,211 @@
+---
+title: "Coordinate Systems"
+output: html_document
+---
+
+**Module 3 for William Norfolk**
+
+```{r}
+library(tidyverse)
+library(raster)
+library(sp)
+```
+
+```{r}
+# install.packages("ggplot2")
+# install.packages("sp")
+# install.packages("raster")
+# install.packages("rgdal")
+# install.packages("brew")
+# install.packages("systemfonts")
+# install.packages("mapview")
+# install.packages("spatstat")
+# install.packages("tmaptools")
+# install.packages("elevatr")
+# install.packages("rgbif")
+# install.packages("remotes")
+# remotes::install_github("Nowosad/spDataLarge")
+# install.packages("spData")
+# install.packages("gstat")
+# install.packages("fields")
+# install.packages("foreign")
+# install.packages("velox")
+```
+
+Load intro.RData workspace. This is really as a practice...
+
+```{r}
+#load data from relative folder
+load("../IDEAS_Spatial_Ecology_Workshop/intro.RData")
+```
+
+There are many other simple analyses we can do on our points layer. For example, we can find the nearest neighbors among a set of points. 
+
+```{r}
+library(spatstat)
+# nearest neighbours = computes the distance from each neighbor in a pattern
+# requires datapoints in raw dec degrees not spatial points
+
+   d <- nndist(dbasins[,1:2])
+
+   # second nearest neighbours
+   d2 <- nndist(dbasins[,1:2], k=2)
+
+   # first, second and third nearest
+   d1to3 <- nndist(dbasins[,1:2], k=1:3)
+```
+
+NOTE that the nndist() command in the spstat package takes raw coordinates rather that spatial points. Since, in this cases, the coordinates are in decimal degreess, those are the values for distance. Not very useful!
+
+So we can transform or project the point into a planar coordinate system with meters for units. To transform, we need spatial points. Let's project the points to UTM Zone=17 as is typically done for the western half of Georgia. 
+
+```{r}
+#spTransform is used to project the points to the specififed zone. Essentially supplying a .proj value to the dbasin_pts dataframe. Argument crs must be an object of the class CRS or a character string defining the specific crs. Below we use a string
+
+dbasin_pts_utm<-spTransform(dbasin_pts,crs("+proj=utm +zone=17 +datum=NAD83 +units=m +no_defs"))
+```
+
+Now let's get the raw coordinates (in UTM 17) back to redo the nearest neighbor analysis.
+
+```{r}
+#feedback coordinates after assigning a CRS the recalculate nearest neigbors
+
+dbasins_utm<-coordinates(dbasin_pts_utm)
+
+# nearest neighbours
+   d <- nndist(dbasins_utm)
+
+   # second nearest neighbours
+   d2 <- nndist(dbasins_utm, k=2)
+
+   # first, second and third nearest
+   d1to3 <- nndist(dbasins_utm, k=1:3)
+   head(d1to3)
+```
+
+We now have nearest neighbor distances in meters!
+
+NOTE that the spstat package can be used to perform many point process analyses including kernel density, Ripley's K, intensity, density...
+
+The excercise above introduces the topic of coordinate transformation or projection. If the great value of GIS is in overlaying spatial data layers, this is made possible by the use of coordinate systems that can be interconverted. Any data layer can be transformed to the coordinate system of any other data layer provided both layers come with information that accurately describes its coordinate system. A coordinate system is a model that relates x, y coordinates to real world locations.
+
+<style>
+div.blue { background-color:#e6f0ff; border-radius: 5px; padding: 20px;}
+</style>
+<div class = "blue">
+
+**Note** _Different spatial analyses will skew spatial data in one way or another due to the method by which they are calculated, interpreted, or visualized. We use GIS to overlay different spatial data layers (each of which have different pros and cons and supply different infomration) that can be comparable. To make data comparable a coordinate system is used to essentially standardize data to real world locations_
+
+</div>
+
+We are all familiar with longitude (x) and latitude (y). Lat-long coordinates, also referred to as geographic or unprojected coordinates, are a spherical coordinate system. Longitude (x) is the angle of the arc from the 0 meridian (Greenwich,England, Prime Meridian) to the location, and latitude (y) is the angle of the arc from the equator to the location. In both cases, the center of the earth is the vertex of the angle. 
+
+Longitude is 0 at the Prime Meridian. Eastward values are positive and westward values negative until meeting at 180. Latitude goes from 0 at the equator to 90 at the North Pole and -90 at the South Pole. Lat-long coordinates are given in degrees, minutes, seconds, but these are converted to decimal degrees (DD) in GIS systems (30 minutes = 0.5 degrees; 30 seconds = 0.005 degrees).
+
+But in a spherical coordinate system the area of a square unit (1x1 degree,1x1 second) diminishes as we move toward the poles and the meridians converge. Thus, a 1x1 degree cell centered at the equator is ~12364.155 km2, but a 1x1 degree cell centered at our latitude, 33N, is ~10369.453 km2.
+
+Therefore, using a spherical coordinate system to represent large areas of the earth's surface in a flat map introduces major distortions.
+
+_i.e. shortest distance is the circumference that intersects the two points_
+
+In fact, representing the 3d earth in a 2d map ALWAYS distorts. Many flat maps, like the classic Mercator map of the world, distort area. Flat maps are rendered in projections that take 3D spherical coordinates systems and "project" them into 2D planar coordinate systems. Flat maps cannot be equidistant, equal area, true direction, and conformal (maintain the shape of features). 
+
+Although this is not necessarily a problem when working with a localized area (e.g. U.S. county), at larger scales (e.g. U.S. state) the choice depends on the application and the dimensions of the region -- think of a state that extends east-west like TN vs a state like GA that extends more north to south.
+
+Depending on the source, spatial data may be served in a variety of projections. Unlike many commercial GIS software packages, **Note** R will not automatically overlay data that are not in the same coordinate system. 
+
+Instead we need to get any layers to be overlaid in the same coordinate system (as we just did above). To illustrate this again, let's overlay dbasin_pts on landcover data to summarize the land cover surrounding each detention basin using a raster of land cover from the NARSAL lab at UGA (http://narsal.uga.edu/).
+
+```{r}
+# Load raster package
+library(raster)
+
+# Latest landcover from NARSAL lab
+lulc<-raster("../IDEAS_Spatial_Ecology_Workshop/glut_lc_2015.img")
+
+# What does this layer consist of?
+lulc
+
+#This layer consists of a raster data or spatial/image data that is comprised a matrix of pixels or cells that are used to demarcate data spatially. Think pixels shot by a particular camera to produce a photograph
+```
+
+To overlay the detention basins on the raster layer, we need to make sure that both are in the same coordinate system. But the land cover raster appears to be in the UTM (Universal Transverse Mercator) 17 coordinate system. Therefore, we need to reproject or transform the dbasin_pts from decimal degrees (lat-long, geographic, unprojected) to UTM 17, which we have already done. (We could do it the other way, but that would require a lot more computation.)
+
+We can extract the value of land use/landcover (lulc) at each dbasins_utm point, because they are in the same coordinate system, the UTM 17 projection.
+
+```{r}
+# Extract values to points
+lc<-extract(lulc,dbasin_pts_utm) #using lulc to compare land usage
+
+# Add land use column to the SPDF
+dbasin_pts_utm@data<-cbind(dbasin_pts_utm@data,lc) 
+#I am unfamilar with an @ call in r, is this specific to a particular package?
+
+# Write to shapefile
+raster::shapefile(dbasin_pts_utm,"../IDEAS_Spatial_Ecology_Workshop/dbasin_pts_utm.shp", overwrite=TRUE)
+```
+
+Now we can look at the distribution of detention ponds relative to the degree of urbanization: 21 = Developed open space <20% impervious, 22 = Low intensity developed (20-49% inpervious), 23 = Medium intensity developed (50-70% impervious), 24 = High intensity developed (89% inpervious).
+
+```{r}
+with(dbasin_pts_utm@data,table(lc))
+```
+
+Back to coordinate systems and projections. Not infrequently spatial data comes without an associated projection file. With shapefiles, a coordinate system description is stored as a text file (.prj). With raster data, projection information is sometimes stored in associated "world files". Tifs may come with .tfw files (.bils with .blw files, etc.) that are read in by software. 
+**Always save keep the coordinate system or you cannot properly add the new layer.**
+
+More recently, projection information is encoded in a raster file itself as in the GeoTIFF format. 
+
+Finally, if no projection/coordinate system info accompanies spatial data, the metadata that should accompany the data may specify it. If this is the case, you will want to define the projection in order to be able to overlay the data on other spatial layers. In many cases, the coordinate system is not specified when the data is in lat-long. 
+_If using lat-long the coordinate system is:_                                                    ```+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0```
+
+NOTE that it's usually easy to identify coordinates that are in decimal degrees, but frequently if data is from a single quadrant of the globe, the authors will render both longitude as positive even when it's not! 
+
+NOTE ALSO that defining the projection of a layer is NOT the same as transforming the data from one coordinate system to another. You can call me Ringo Starr or Prince Charles, but it won't change my current address or net worth! 
+
+<style>
+div.blue { background-color:#e6f0ff; border-radius: 5px; padding: 20px;}
+</style>
+<div class = "blue">
+
+_Use coordinate systems to relate different data layers to one another, but to transform the data a different function (such as spTransform) must be used_ 
+
+</div>
+
+**FINAL NOTE:** assigning a layer the wrong coordinate/projection description will make it impossible to overlay on other data!
+
+Let's do an example of defining a projection using the conservation lands of Georgia from GA DNR. Note that this is not much different than what we did when we created the dbasins spatial points dataframe.
+
+```{r}
+conlands<-shapefile("../IDEAS_Spatial_Ecology_Workshop/ConservationLands_2019.shp")
+```
+
+Notice the .prj file is missing and when we look at the shapefile description, there's no projection/coordinate system info. crs = NA
+
+```{r}
+conlands
+```
+
+But we know from the metadata document that came with the data that the projection is:
+Spatial_Reference_Information
+Horizontal_Coordinate_System_Definition
+Planar
+Map_Projection:
+Map_Projection_Name: UTM Zone 17
+
+Geodetic Model
+Horizontal_Datum_Name:  North American Datum of 1983
+Ellipsoid_Name:  GRS 1980
+Semi-major_Axis:  
+Denominator_of_Flattening:  
+
+```{r}
+#manually add crs (coordinate system) based on metadata description
+crs(conlands)<-CRS("+proj=utm +zone=17 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs") 
+```
+
+We used a standard proj4 string in R to define the CRS (Coordinate Reference System). You can look these up at https://spatialreference.org/ref/sr-org/?search=&srtext=Search using "UTM Zone 17".
+ 
+NOTE that minor differences in a CRS that are not important (e.g. including or not "+no_defs") will cause layers to be incompatible! _I am confused by this?_
+
+IMPORTANT: novices to GIS have a tendency to ignore coordinate systems, and the built in features of ArcGIS and other commercial software promote this. But taking care to make sure you understand coordinate systems and to doublecheck that the data is in the projection you think (or would like) it to be will save you a lot of heartache later on!!
